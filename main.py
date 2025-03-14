@@ -1,5 +1,6 @@
 from flask import Flask, request, url_for, render_template, redirect
-from flask_login import login_user
+from flask_login import login_user, LoginManager
+from setuptools.config.pyprojecttoml import validate
 
 from data import db_session
 from api import jobs_api, jobs_api_one
@@ -12,6 +13,14 @@ from forms.register_form import RegisterForm
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'yandexlyceum_secret_key'
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    db_sess = db_session.create_session()
+    return db_sess.query(User).get(user_id)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -245,7 +254,6 @@ def register():
     form = RegisterForm()
 
     if form.validate_on_submit():
-
         if form.password.data != form.password_1.data:
             return render_template('register.html',
                                    form=form, message='Пароли не совпали')
