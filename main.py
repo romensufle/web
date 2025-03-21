@@ -1,20 +1,57 @@
-from flask import Flask, request, url_for, render_template, redirect
-from flask_login import login_user, LoginManager
-from setuptools.config.pyprojecttoml import validate
+from flask import Flask, request, url_for, render_template, redirect, abort
+from flask_login import login_user, LoginManager, login_required
+from sqlalchemy.dialects.oracle.dictionary import all_users
 
 from data import db_session
-from api import jobs_api, jobs_api_one
+from api import jobs_api, jobs_api_one, user_resource, users_list_resource
 from data.jobs import Jobs
 from data.user import User
+from forms.jobform import JobForm
 from forms.login import LoginForm1
 from forms.loginform import LoginForm
 from forms.register_form import RegisterForm
-
+from flask_restful import reqparse, Api, Resource
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'yandexlyceum_secret_key'
+api = Api(app)
+
 login_manager = LoginManager()
 login_manager.init_app(app)
+
+
+@login_required
+@app.route('/job_delete/<int:id>')
+def delete_job(id):
+    sess = db_session.create_session()
+    job = sess.query(Jobs).filter(Jobs.id == id).first()
+    if job:
+        sess.delete(job)
+        sess.commit()
+    else:
+        abort(404)
+    return redirect('/logs')
+
+
+@login_required
+@app.route('/new_job', methods=['GET', 'POST'])
+def new_job():
+    form = JobForm()
+    if form.validate_on_submit():
+        sess = db_session.create_session()
+        if sess.query(Jobs).filter(Jobs.job == form.job.data).first():
+            return render_template('add_job.html', form=form, message='Такая работа есть')
+        job = Jobs(
+            job=form.job.data,
+            team_leader=form.team_leader.data,
+            work_size=form.work_size.data,
+            collaborators=form.collaborators.data,
+            is_finished=form.is_finished.data
+        )
+        sess.add(job)
+        sess.commit()
+        return redirect('/logs')
+    return render_template('add_job.html', form=form)
 
 
 @login_manager.user_loader
@@ -253,7 +290,8 @@ def logs():
 def register():
     form = RegisterForm()
 
-    if form.validate_on_submit():
+    if True:
+
         if form.password.data != form.password_1.data:
             return render_template('register.html',
                                    form=form, message='Пароли не совпали')
@@ -286,9 +324,12 @@ def main():
     db_session.global_init("db/blogs.db")
     app.register_blueprint(jobs_api.blueprint)
     app.register_blueprint(jobs_api_one.blueprint)
+    api.add_resource(user_resource.UsersResource, '/api/v2/users/<int:user_id>')
+    api.add_resource(users_list_resource.UsersListResource, '/api/v2/users')
     # add_user()
     # add_job()
-    app.run(port=8080, host='127.0.0.1')
+
+    app.run(port=8080, host='127.0.0.1', debug=True)
 
 
 if __name__ == '__main__':
